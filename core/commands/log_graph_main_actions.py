@@ -650,5 +650,5 @@ class gs_log_graph_action(WindowCommand, GitCommand):
         })
 
     def checkout_file_at_commit(self, commit_hash, file_path):
-        self.checkout_ref(commit_hash, fpath=file_path)
+        self.checkout_ref(commit_hash, fpath=self.file_path_at(file_path, commit_hash))
         util.view.refresh_gitsavvy_interfaces(self.window)

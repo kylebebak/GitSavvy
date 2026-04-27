@@ -99,7 +99,7 @@ class LogMixin(GitCommand):
         if window:
             window.run_command("gs_show_commit_info", {
                 "commit_hash": commit,
-                "file_path": file_path
+                "file_path": self.file_path_at(file_path, commit)
             })
 
     def do_action(self, commit_hash, **kwargs):
@@ -289,5 +289,5 @@ class gs_log_action(PanelActionMixin, WindowCommand):
         })
 
     def checkout_file_at_commit(self):
-        self.checkout_ref(self._commit_hash, fpath=self._file_path)
+        self.checkout_ref(self._commit_hash, fpath=self.file_path_at(self._file_path, self._commit_hash))
         util.view.refresh_gitsavvy_interfaces(self.window, refresh_sidebar=True)

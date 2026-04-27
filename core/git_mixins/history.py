@@ -210,6 +210,14 @@ class HistoryMixin(mixin_base):
         except IndexError:
             return filename
 
+    def file_path_at(self, file_path, commit_hash):
+        # type: (Optional[str], Optional[str]) -> Optional[str]
+        # `file_path` must be the HEAD-side name; `filename_at_commit`
+        # only detects renames walking backward from HEAD.
+        if commit_hash and file_path and self.savvy_settings.get("log_follow_rename"):
+            return self.filename_at_commit(file_path, commit_hash)
+        return file_path
+
     @cached(not_if={"base_commit": is_dynamic_ref, "target_commit": is_dynamic_ref})
     def list_touched_filenames(self, base_commit, target_commit, cached=None):
         # type: (Optional[str], Optional[str], Optional[bool]) -> List[str]
