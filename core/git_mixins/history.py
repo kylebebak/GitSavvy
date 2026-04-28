@@ -1,15 +1,15 @@
 from __future__ import annotations
+
 import email.utils
 from itertools import chain, takewhile
+from typing import Iterator, List, NamedTuple, Optional
 
-from ..exceptions import GitSavvyError
-from ...common import util
 from GitSavvy.core.fns import last, pairwise
 from GitSavvy.core.git_command import mixin_base
 from GitSavvy.core.utils import cached
 
-
-from typing import Iterator, List, NamedTuple, Optional
+from ...common import util
+from ..exceptions import GitSavvyError
 
 
 class LogEntry(NamedTuple):
@@ -194,17 +194,56 @@ class HistoryMixin(mixin_base):
     def resolve_commitish(self, ref: str) -> str:
         return self.git("rev-parse", "--short", ref).strip()
 
+    @cached(not_if={"file_path": lambda p: not p})
+    def file_rename_history(self, file_path):
+        # type: (str) -> List[Tuple[str, str]]
+        # Returns [(commit_hash, name_at_that_commit)] for the file's full
+        # history (newest first), traced via `--follow`.  `file_path` must
+        # be the HEAD-side name, since `--follow` matches the pathspec at
+        # the tip of the range. Cached: lets callers do many cheap lookups
+        # against a single subprocess walk.
+        output = self.git(
+            "log",
+            "--follow",
+            "--name-status",
+            "--format=COMMIT %H",
+            "--", file_path
+        )
+        history = []  # type: List[Tuple[str, str]]
+        current_commit = None  # type: Optional[str]
+        for line in output.splitlines():
+            if line.startswith("COMMIT "):
+                current_commit = line[7:].strip()
+            elif current_commit and line.strip():
+                cols = line.split("\t")
+                if len(cols) >= 2:
+                    history.append((current_commit, cols[-1]))
+                    current_commit = None
+        return history
+
     def filename_at_commit(self, filename, commit_hash):
+        # type: (str, str) -> str
+        for h, name in self.file_rename_history(filename):
+            if h.startswith(commit_hash):
+                return name
+        # Cache miss. Most likely a merge commit (default
+        # `--diff-merges=off` emits no name-status line and our parser
+        # drops it), or a commit reachable only via the branch_hint that
+        # `next_commits` walks but HEAD doesn't. Fall back to a targeted
+        # query so `get_file_content_at_commit` doesn't blow up.
+        return self._filename_at_commit_uncached(filename, commit_hash)
+
+    @cached(not_if={"commit_hash": is_dynamic_ref})
+    def _filename_at_commit_uncached(self, filename, commit_hash):
         # type: (str, str) -> str
         lines = self.git(
             "log",
-            "--format=",  # we don't need any commit info beside the name status
+            "--format=",
             "--follow",
             "--name-status",
             "{}..".format(commit_hash),
             "--", filename
         ).strip().splitlines()
-
         try:
             return lines[-1].split("\t")[1]
         except IndexError:
