@@ -162,8 +162,9 @@ class gs_blame_current_file(LogMixin, BlameMixin):
         return self._commit_hash and commit_hash.startswith(self._commit_hash)
 
     def log(self, **kwargs):  # type: ignore[override]
-        follow = self.savvy_settings.get("blame_follow_rename")
-        kwargs["follow"] = follow
+        # `--follow` requires a pathspec; only request it when a file_path
+        # has been threaded through.
+        kwargs["follow"] = bool(kwargs.get("file_path") and self.savvy_settings.get("blame_follow_rename"))
         return super().log(**kwargs)
 
 

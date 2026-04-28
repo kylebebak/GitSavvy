@@ -150,12 +150,12 @@ class _gs_show_file_at_commit_refresh_mixin(GsTextCommand):
         # on, we must walk renames using the file's name *at* `current_commit`
         # (because `--follow` needs an existing pathspec at the range tip), and
         # then read the previous version using the name at the previous commit.
-        follow = bool(self.savvy_settings.get("log_follow_rename"))
+        follow = bool(file_path and self.savvy_settings.get("log_follow_rename"))
         name_at_current = self.file_path_at(file_path, current_commit)
         previous_commit = self.previous_commit(current_commit, name_at_current, follow=follow)
         if previous_commit and previous_commit != current_commit:
             name_at_previous = self.file_path_at(file_path, previous_commit)
-            return self.get_file_content_at_commit(name_at_previous, previous_commit)
+            return self.get_file_content_at_commit(name_at_previous or file_path, previous_commit)
         else:
             # For initial revisions of a file, everything is new/added, and we
             # just compare with the empty "".
@@ -181,11 +181,11 @@ class gs_show_file_at_commit_refresh(_gs_show_file_at_commit_refresh_mixin):
         name_at_commit = self.file_path_at(file_path, commit_hash)
 
         def program():
-            text = self.get_file_content_at_commit(name_at_commit, commit_hash)
+            text = self.get_file_content_at_commit(name_at_commit or file_path, commit_hash)
             render(view, text, position)
             view.reset_reference_document()
             commit_details = self.commit_subject_and_date(commit_hash)
-            self.update_title(commit_details, name_at_commit)
+            self.update_title(commit_details, name_at_commit or file_path)
             self.update_status_bar(commit_details)
             enqueue_on_worker(self.update_reference_document, commit_hash, file_path)
 
@@ -315,7 +315,9 @@ def get_next_commit(
     if next_commit := recall_next_commit_for(view, commit_hash):
         return next_commit
 
-    follow = bool(cmd.savvy_settings.get("log_follow_rename"))
+    # `--follow` requires a pathspec; in views without a file (e.g. show-commit)
+    # `file_path` is None, so don't request follow there.
+    follow = bool(file_path and cmd.savvy_settings.get("log_follow_rename"))
     next_commits = cmd.next_commits(commit_hash, file_path, follow=follow)
     remember_next_commit_for(view, next_commits)
     return next_commits.get(commit_hash)
@@ -331,13 +333,18 @@ def get_previous_commit(
     if previous := recall_previous_commit_for(view, commit_hash):
         return previous
 
-    follow = bool(cmd.savvy_settings.get("log_follow_rename"))
+    follow = bool(file_path and cmd.savvy_settings.get("log_follow_rename"))
     # `--follow` needs the file's name *at* `commit_hash` (the range tip);
     # the HEAD-side name may not exist there yet.
     name_at_commit = cmd.file_path_at(file_path, commit_hash)
-    if previous := cmd.previous_commit(commit_hash, name_at_commit, follow=follow):
+    previous = cmd.previous_commit(commit_hash, name_at_commit, follow=follow)
+    # `previous_commit` returns `commit_hash` itself when there's no actual
+    # older commit (e.g., at the file's initial revision). Don't cache that
+    # self-referential entry, because it would later make `n` a NOOP.
+    if previous and previous != commit_hash:
         remember_next_commit_for(view, {previous: commit_hash})
-    return previous
+        return previous
+    return None
 
 
 def remember_next_commit_for(view: sublime.View, mapping: Dict[str, str]) -> None:

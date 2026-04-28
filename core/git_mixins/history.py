@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import email.utils
 from itertools import chain, takewhile
-from typing import Iterator, List, NamedTuple, Optional
+from typing import Iterator, List, NamedTuple, Optional, Tuple
 
 from GitSavvy.core.fns import last, pairwise
 from GitSavvy.core.git_command import mixin_base
